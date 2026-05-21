@@ -62,14 +62,17 @@ def search_products(query, max_results=6):
     scored = []
     for p in product_cache:
         name = p.get("item", "").lower()
+        name_words = name.split()
         score = 0.0
-        for word in query_words:
-            if word in name:
+        for qword in query_words:
+            # Substring match: "cremas" matchea "crema", "globos" matchea "globo"
+            if any(qword in nword or nword in qword for nword in name_words):
                 score += 3
             else:
-                ratio = SequenceMatcher(None, word, name).ratio()
-                if ratio > 0.6:
-                    score += ratio
+                # Fuzzy match palabra por palabra
+                best = max((SequenceMatcher(None, qword, nword).ratio() for nword in name_words), default=0)
+                if best > 0.75:
+                    score += best
         if score > 0:
             precio = None
             for pr in p.get("precios", []):
