@@ -130,11 +130,12 @@ def build_system_prompt(products_info=""):
             "- Respondé SIEMPRE con el precio exacto del producto si está en la lista\n"
             "- Si hay varios similares, mostrá todas las opciones con precio\n"
             "- Ofrecé siempre algo complementario para sumar a la venta\n"
-            "- NUNCA digas que no tenés el precio si el producto está en la lista de abajo\n"
-            "- NUNCA derivo al cliente a otra persona ni pidas que dejen número\n"
-            "- Si el producto NO está en la lista, decí 'No tenemos ese producto, pero tenemos X e Y que pueden servir'\n"
+            "- NUNCA menciones stock, disponibilidad ni cantidades. Solo precios.\n"
+            "- NUNCA digas 'no tenemos en stock' ni nada parecido\n"
+            "- NUNCA derives al cliente a otra persona ni pidas que dejen número\n"
+            "- Si el producto NO está en la lista, decí simplemente 'No manejamos ese producto' y ofrecé algo similar si podés\n"
             + sec +
-            "REGLA DE ORO: Sos el vendedor. Resolvés en el momento. Si está el precio, lo das. Si no está el producto, ofrecés alternativas.")
+            "REGLA DE ORO: Sos el vendedor. Solo manejás precios. Si está en la lista, das el precio. Si no está, decís que no lo manejás.")
 
 async def process_message(phone, text):
     if phone not in conversations:
