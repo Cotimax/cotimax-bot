@@ -124,12 +124,14 @@ def build_system_prompt(products_info=""):
             "- Estamos en Córdoba, Argentina\n"
             "- Para envíos y formas de pago, invitá al cliente a coordinar directamente\n\n"
             "CUANDO PREGUNTAN POR PRODUCTOS:\n"
-            "- Informá precios exactos de los productos disponibles\n"
-            "- Si hay varios similares, mostrá las opciones con precio\n"
-            "- Ofrecé productos complementarios para sumar a la venta\n"
-            "- Nunca inventes precios ni productos que no estén en la lista\n"
+            "- Respondé SIEMPRE con el precio exacto del producto si está en la lista\n"
+            "- Si hay varios similares, mostrá todas las opciones con precio\n"
+            "- Ofrecé siempre algo complementario para sumar a la venta\n"
+            "- NUNCA digas que no tenés el precio si el producto está en la lista de abajo\n"
+            "- NUNCA derivo al cliente a otra persona ni pidas que dejen número\n"
+            "- Si el producto NO está en la lista, decí 'No tenemos ese producto, pero tenemos X e Y que pueden servir'\n"
             + sec +
-            "Si el cliente quiere comprar, preguntale qué cantidad necesita y coordiná el pedido.")
+            "REGLA DE ORO: Sos el vendedor. Resolvés en el momento. Si está el precio, lo das. Si no está el producto, ofrecés alternativas.")
 
 async def process_message(phone, text):
     if phone not in conversations:
@@ -137,6 +139,11 @@ async def process_message(phone, text):
     conversations[phone].append({"role": "user", "content": text})
     if len(conversations[phone]) > 10:
         conversations[phone] = conversations[phone][-10:]
+
+    # Si el cache todavia esta cargando, avisamos y esperamos
+    if len(product_cache) == 0:
+        return "¡Hola! Ya casi estoy lista, estoy cargando los productos. ¿Me mandás el mensaje de nuevo en un minuto? 😊"
+
     products = search_products(text)
     products_info = ""
     if products:
