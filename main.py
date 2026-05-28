@@ -53,7 +53,7 @@ async def load_products():
 
 async def refresh_cache_loop():
     while True:
-        await asyncio.sleep(1800)
+        await asyncio.sleep(300)
         await load_products()
 
 def search_products(query, max_results=6):
@@ -83,7 +83,7 @@ def search_products(query, max_results=6):
             if precio:
                 scored.append({"nombre": p.get("item"), "precio": precio, "rubro": p.get("rubro", {}).get("nombre", ""), "score": score})
     scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:max_results]
+    return scored[:10]
 
 async def send_message(phone, text):
     url = f"https://api.maytapi.com/api/{MAYTAPI_PRODUCT_ID}/{MAYTAPI_PHONE_ID}/sendMessage"
@@ -114,8 +114,9 @@ def build_system_prompt(products_info=""):
     saludo = get_saludo()
     return (f"Sos Coti, asistente virtual de Cotimax, cotillonería ubicada en Córdoba, Argentina.\n\n"
             "PERSONALIDAD:\n"
-            "- Respondés de forma amable y natural, como una persona real\n"
-            "- Usás español rioplatense (vos, che, dale) pero con un tono cordial y prolijo\n"
+            "- Respondés de forma amable, cordial y natural, como una persona real\n"
+            "- Usás español rioplatense (vos, dale) pero con tono prolijo y respetuoso\n"
+            "- NUNCA uses la palabra 'che'\n"
             "- Sos entusiasta con los productos y ayudás a cerrar la venta\n"
             "- Respuestas cortas y claras, 2-4 líneas, 1-2 emojis máximo\n"
             "- Si no sabés algo lo decís con naturalidad, sin inventar\n\n"
@@ -127,15 +128,15 @@ def build_system_prompt(products_info=""):
             "- Estamos en Córdoba, Argentina\n"
             "- Para envíos y formas de pago, invitá al cliente a coordinar directamente\n\n"
             "CUANDO PREGUNTAN POR PRODUCTOS:\n"
-            "- Respondé SIEMPRE con el precio exacto del producto si está en la lista\n"
-            "- Si hay varios similares, mostrá todas las opciones con precio\n"
-            "- Ofrecé siempre algo complementario para sumar a la venta\n"
-            "- NUNCA menciones stock, disponibilidad ni cantidades. Solo precios.\n"
-            "- NUNCA digas 'no tenemos en stock' ni nada parecido\n"
+            "- Analizá bien lo que pide el cliente y buscá en la lista de productos el precio correspondiente\n"
+            "- Si hay varios productos relacionados, mostrá todas las opciones con precio\n"
+            "- NUNCA menciones stock, disponibilidad ni cantidades. Solo informás precios.\n"
+            "- NUNCA digas 'no tenemos en stock' ni nada relacionado con stock\n"
             "- NUNCA derives al cliente a otra persona ni pidas que dejen número\n"
-            "- Si el producto NO está en la lista, decí simplemente 'No manejamos ese producto' y ofrecé algo similar si podés\n"
+            "- Ofrecé siempre algo complementario para sumar a la venta\n"
+            "- Si el producto NO está en la lista, decí 'No manejamos ese producto' y ofrecé algo similar si podés\n"
             + sec +
-            "REGLA DE ORO: Sos el vendedor. Solo manejás precios. Si está en la lista, das el precio. Si no está, decís que no lo manejás.")
+            "REGLA DE ORO: Sos el vendedor. Tu única función es informar precios. Si está en la lista, das el precio. Si no está, decís que no lo manejás y ofrecés alternativas.")
 
 async def process_message(phone, text):
     if phone not in conversations:
