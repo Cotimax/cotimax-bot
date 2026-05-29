@@ -14,6 +14,7 @@ DUX_TOKEN          = os.getenv("DUX_TOKEN")
 DUX_DEPOSIT_ID     = os.getenv("DUX_DEPOSIT_ID", "1")
 ZAPI_INSTANCE_ID   = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN         = os.getenv("ZAPI_TOKEN")
+ZAPI_CLIENT_TOKEN  = os.getenv("ZAPI_CLIENT_TOKEN", "")
 GROQ_API_KEY       = os.getenv("GROQ_API_KEY")
 
 conversations: dict = {}
@@ -96,9 +97,12 @@ def search_products(query: str) -> list:
 async def send_message(phone: str, text: str) -> bool:
     url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE_ID}/token/{ZAPI_TOKEN}/send-text"
     payload = {"phone": phone, "message": text}
+    headers = {}
+    if ZAPI_CLIENT_TOKEN:
+        headers["Client-Token"] = ZAPI_CLIENT_TOKEN
     async with httpx.AsyncClient(timeout=15) as client:
         try:
-            r = await client.post(url, json=payload)
+            r = await client.post(url, json=payload, headers=headers)
             print(f"Z-API send: {r.status_code}")
             return r.status_code == 200
         except Exception as e:
