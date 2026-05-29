@@ -2,6 +2,7 @@ import os
 import asyncio
 import anthropic
 import httpx
+import unicodedata
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone, timedelta
@@ -20,6 +21,58 @@ GROQ_API_KEY       = os.getenv("GROQ_API_KEY")
 conversations: dict = {}
 product_cache: list = []
 cache_updated = None
+
+# ─── BÚSQUEDA MEJORADA ───────────────────────────────────────
+
+def strip_accents(text: str) -> str:
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', text)
+        if unicodedata.category(c) != 'Mn'
+    )
+
+SYNONYMS = {
+    "bomba":       ["inflador"],
+    "inflar":      ["inflador"],
+    "inflable":    ["inflador"],
+    "velita":      ["vela"],
+    "globito":     ["globo"],
+    "tarta":       ["torta"],
+    "sombrero":    ["gorro"],
+    "gorrito":     ["gorro"],
+    "pito":        ["silbato"],
+    "flauta":      ["silbato"],
+    "confetti":    ["confeti"],
+    "recuerdo":    ["souvenir"],
+    "escarcha":    ["glitter"],
+    "antifaz":     ["mascara", "careta"],
+    "mascarita":   ["antifaz", "careta"],
+    "pitillo":     ["sorbete"],
+    "canita":      ["sorbete"],
+    "serpentin":   ["serpentina"],
+    "matasuegra":  ["matasuegras"],
+    "cumple":      ["cumpleanos"],
+    "cumpleano":   ["cumpleanos"],
+    "papel":       ["papel", "tissue"],
+    "tissue":      ["papel"],
+    "cinta":       ["cinta", "ribbon"],
+    "moño":        ["mono", "cinta"],
+    "mono":        ["mono", "moño"],
+    "bolsita":     ["bolsa"],
+    "cajita":      ["caja"],
+    "platito":     ["plato"],
+    "vasito":      ["vaso"],
+}
+
+def expand_words(words: list) -> list:
+    expanded = set(words)
+    for w in words:
+        if w in SYNONYMS:
+            expanded.update(SYNONYMS[w])
+        if len(w) > 4 and w.endswith('s'):
+            expanded.add(w[:-1])
+        if len(w) > 5 and w.endswith('es'):
+            expanded.add(w[:-2])
+    return list(expanded)
 
 # ─── PRODUCTOS ───────────────────────────────────────────────
 
@@ -61,20 +114,24 @@ async def refresh_cache_loop():
         await load_products()
 
 def search_products(query: str) -> list:
-    query_lower = query.lower()
-    query_words = [w for w in query_lower.split() if len(w) > 2]
+    query_norm = strip_accents(query.lower())
+    raw_words = [w for w in query_norm.split() if len(w) > 2]
+    query_words = expand_words(raw_words)
     scored = []
     for p in product_cache:
-        name = p.get("item", "").lower()
-        name_words = name.split()
+        name_norm = strip_accents(p.get("item", "").lower())
+        name_words = name_norm.split()
         score = 0.0
         for qword in query_words:
             if any(qword in nword or nword in qword for nword in name_words):
                 score += 3
             else:
-                best = max((SequenceMatcher(None, qword, nword).ratio() for nword in name_words), default=0)
-                if best > 0.75:
-                    score += best
+                best = max(
+                    (SequenceMatcher(None, qword, nword).ratio() for nword in name_words),
+                    default=0
+                )
+                if best > 0.72:
+                    score += best * 2
         if score > 0:
             precio = None
             for pr in p.get("precios", []):
@@ -152,12 +209,13 @@ def build_system_prompt(products_info: str = "") -> str:
         sec = "\nPRODUCTOS ENCONTRADOS:\n" + products_info + "\n"
     saludo = get_saludo()
     return (
-        "Sos Coti, asistente virtual de Cotimax, cotillonería ubicada en Córdoba, Argentina.\n\n"
+        "Sos Max, asistente virtual de Cotimax, cotillonería ubicada en Córdoba, Argentina.\n\n"
         "PERSONALIDAD:\n"
-        "- Respondés de forma amable, cordial y natural, como una persona real\n"
+        "- Tono semi-formal y amigable, como un vendedor real y cercano\n"
         "- Usás español rioplatense (vos, dale) con tono prolijo y respetuoso\n"
-        "- NUNCA uses la palabra 'che'\n"
-        "- Sos entusiasta con los productos y ayudás a cerrar la venta\n"
+        "- NUNCA uses: 'che', 'boludo', malas palabras ni expresiones de demasiada confianza\n"
+        "- SIEMPRE respondés en español, sin importar el idioma en que escriba el cliente\n"
+        "- Sos entusiasta con los productos y ofrecés artículos relacionados para complementar\n"
         "- Respuestas cortas y claras, 2-4 líneas, 1-2 emojis máximo\n"
         "- Si no sabés algo lo decís con naturalidad, sin inventar\n\n"
         "SALUDO INICIAL:\n"
@@ -165,18 +223,20 @@ def build_system_prompt(products_info: str = "") -> str:
         "- En mensajes siguientes no repitas el saludo\n\n"
         "NEGOCIO:\n"
         "- Vendemos cotillón, artículos de repostería, librería y artículos para fiestas\n"
-        "- Estamos en Córdoba, Argentina\n"
-        "- Para envíos y formas de pago, invitá al cliente a coordinar directamente\n\n"
+        "- Estamos en Av. Donato Álvarez 8720, Córdoba\n"
+        "- Horario: lunes a sábado de 9:00 a 13:00 y de 16:30 a 20:00 hs\n"
+        "- Para envíos y formas de pago, informá que nuestro personal los va a ayudar\n\n"
         "CUANDO PREGUNTAN POR PRODUCTOS:\n"
-        "- Analizá bien lo que pide el cliente y buscá el precio en la lista de abajo\n"
-        "- Si hay varios productos relacionados, mostrá todas las opciones con precio\n"
+        "- Analizá el CONTEXTO completo de lo que pide el cliente. El cliente puede usar sinónimos, apodos o nombres distintos al que figura en la lista.\n"
+        "- Antes de decir que no tenemos algo, revisá bien la lista: puede aparecer con otro nombre, variante o abreviación.\n"
+        "- Si hay varios productos relacionados, mostrá todas las opciones con precio.\n"
         "- NUNCA menciones stock, disponibilidad ni cantidades. Solo informás precios.\n"
-        "- NUNCA digas 'no tenemos en stock' ni nada relacionado con stock\n"
-        "- NUNCA derives al cliente a otra persona ni pidas que dejen número\n"
-        "- Ofrecé siempre algo complementario para sumar a la venta\n"
-        "- Si el producto NO está en la lista, decí 'No manejamos ese producto' y ofrecé algo similar\n"
+        "- NUNCA digas 'no tenemos en stock' ni nada relacionado con stock.\n"
+        "- Para pagos o envíos: decí 'Para coordinar eso, nuestro personal te va a ayudar 😊'\n"
+        "- Ofrecé siempre algo complementario para sumar a la venta.\n"
+        "- Si el producto definitivamente NO está en la lista, decí 'No manejamos ese artículo' y ofrecé algo similar.\n"
         + sec +
-        "REGLA DE ORO: Sos el vendedor. Tu función es informar precios. Si está en la lista, das el precio. Si no está, lo decís y ofrecés alternativas."
+        "REGLA DE ORO: Sos el vendedor. Tu función es informar precios. Si está en la lista, das el precio. Si no está, lo decís con amabilidad y ofrecés alternativas."
     )
 
 # ─── PROCESO ─────────────────────────────────────────────────
