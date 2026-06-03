@@ -1,4 +1,5 @@
 import os
+import csv
 import asyncio
 import anthropic
 import httpx
@@ -11,8 +12,6 @@ from difflib import SequenceMatcher
 app = FastAPI()
 
 CLAUDE_API_KEY     = os.getenv("CLAUDE_API_KEY")
-DUX_TOKEN          = os.getenv("DUX_TOKEN")
-DUX_DEPOSIT_ID     = os.getenv("DUX_DEPOSIT_ID", "1")
 ZAPI_INSTANCE_ID   = os.getenv("ZAPI_INSTANCE_ID")
 ZAPI_TOKEN         = os.getenv("ZAPI_TOKEN")
 ZAPI_CLIENT_TOKEN  = os.getenv("ZAPI_CLIENT_TOKEN", "")
@@ -76,42 +75,52 @@ def expand_words(words: list) -> list:
 
 # ─── PRODUCTOS ───────────────────────────────────────────────
 
-async def load_products():
+def load_products():
     global product_cache, cache_updated
-    print("Cargando productos de Dux...")
-    all_products = []
-    offset = 0
-    limit = 50
-    async with httpx.AsyncClient(timeout=30) as client:
-        while True:
-            try:
-                r = await client.get(
-                    "https://erp.duxsoftware.com.ar/WSERP/rest/services/items",
-                    params={"offset": offset, "limit": limit, "idDeposito": DUX_DEPOSIT_ID},
-                    headers={"Authorization": DUX_TOKEN},
-                )
-                if r.status_code != 200:
-                    print(f"Dux error: {r.status_code}")
-                    break
-                data = r.json()
-                results = data.get("results", [])
-                all_products.extend(results)
-                total = data.get("paging", {}).get("total", 0)
-                offset += limit
-                if offset >= total:
-                    break
-                await asyncio.sleep(6)
-            except Exception as e:
-                print(f"Error cargando productos: {e}")
-                break
-    product_cache = all_products
+    print("Cargando productos desde CSV...")
+    products = []
+    csv_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "productos.csv")
+    for enc in ("utf-8-sig", "latin-1"):
+        try:
+            with open(csv_path, encoding=enc, newline="") as f:
+                reader = csv.reader(f)
+                for i, row in enumerate(reader):
+                    if i < 3:
+                        continue
+                    if len(row) < 3:
+                        continue
+                    nombre = row[1].strip()
+                    precio_str = row[2].strip().replace(",", "")
+                    if not nombre or not precio_str:
+                        continue
+                    try:
+                        precio = float(precio_str)
+                        if precio <= 0:
+                            continue
+                        products.append({
+                            "item": nombre,
+                            "precios": [{"precio": precio}],
+                            "rubro": {"nombre": ""},
+                        })
+                    except ValueError:
+                        continue
+            break
+        except UnicodeDecodeError:
+            continue
+        except FileNotFoundError:
+            print("ERROR: productos.csv no encontrado")
+            break
+        except Exception as e:
+            print(f"Error cargando CSV: {e}")
+            break
+    product_cache = products
     cache_updated = datetime.now()
     print(f"✅ {len(product_cache)} productos cargados")
 
 async def refresh_cache_loop():
     while True:
-        await asyncio.sleep(300)
-        await load_products()
+        await asyncio.sleep(3600)
+        load_products()
 
 def search_products(query: str) -> list:
     query_norm = strip_accents(query.lower())
@@ -326,5 +335,5 @@ async def health():
 
 @app.on_event("startup")
 async def startup():
-    asyncio.create_task(load_products())
+    load_products()
     asyncio.create_task(refresh_cache_loop())
